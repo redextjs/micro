@@ -1,0 +1,15 @@
+{
+  "name": "redext-micro",
+  "version": "0.0.3",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "load-script": "^2.0.0",
+    "single-spa": "^5.9.4"
+  },
+  "devDependencies": {
+    "vite": "^2.9.13"
+  }
+}
