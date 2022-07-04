@@ -121,6 +121,15 @@ export const registerMicroApp = (config = {}) => {
 
         // console.log('lifeCycles', lifeCycles);
 
+        if (typeof lifeCycles === 'function') {
+          const rootId = appName.replace('@', '')
+
+          lifeCycles = lifeCycles({
+            ...customProps,
+            rootId
+          })
+        }
+
         if (!lifeCycles) {
           const globalConfig = `(global => { global[__APP_NAME__] = { bootstrap, mount, unmount }; })(window)`;
 
