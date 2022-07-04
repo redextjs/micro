@@ -60,16 +60,20 @@ export const registerMicroApp = (config = {}) => {
 
   // console.log('hasRegisterApp', hasRegisterApp);
 
+  const customProps = {
+    ...props,
+    ...microState
+  };
+
+  if (microWorker) {
+    customProps.microWorker = microWorker
+  }
+
   if (hasRegisterApp) {
     registerApplication({
       name: appName,
       activeWhen,
-      customProps: {
-        ...props,
-        ...microState,
-        microWorker
-      },
-      // app: import(appConfig.entry),
+      customProps,
       app: async () => {
         const { container } = appConfig;
         let entry = appConfig.entry;
@@ -116,6 +120,12 @@ export const registerMicroApp = (config = {}) => {
         }
 
         // console.log('lifeCycles', lifeCycles);
+
+        if (!lifeCycles) {
+          const globalConfig = `(global => { global[__APP_NAME__] = { bootstrap, mount, unmount }; })(window)`;
+
+          throw `Check root-config file code: ${globalConfig}`
+        }
 
         return {
           ...lifeCycles,
