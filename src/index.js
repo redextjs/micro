@@ -21,9 +21,19 @@ export const start = (config) => {
 };
 
 export const registerMicroApp = (config = {}) => {
-  const { name, activePath, props, prefix = '@redext-micro', isProduction, microWorker, ...appConfig } = config;
+  const {
+    name,
+    activePath,
+    props = {},
+    componentProps = {},
+    orgName = '@redext-micro',
+    isComponent,
+    isProduction,
+    microWorker,
+    ...appConfig
+  } = config;
 
-  const appName = prefix ? `${prefix}/${name}` : name;
+  const appName = orgName ? `${orgName}/${name}` : name;
 
   let isHash = config.isHash;
   let activeWhen = activePath;
@@ -85,19 +95,39 @@ export const registerMicroApp = (config = {}) => {
           entry = entry.substring(0, lastIndex)
         }
 
-        const response = await fetch(entry);
+        let template;
 
-        const template = await response.text();
+        if (isComponent) {
+          const rootId = appName.replace('@', '')
+
+          template = `<div id="${rootId}">Loading</div>`
+        } else {
+          const response = await fetch(entry);
+
+          template = await response.text();
+        }
 
         const containerElement = getContainerElement(container);
+
+        if (!containerElement) {
+          throw 'containerElement not exist'
+        }
 
         containerElement.setAttribute('data-name', appName);
         containerElement.setAttribute('data-version', packageJson.version);
         containerElement.setAttribute('data-active-path', activePathFull);
 
-        const scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
+        let scriptState;
 
-        containerElement.innerHTML = `${template}\n${scriptState}`;
+        if (!isComponent) {
+          scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
+        }
+
+        if (scriptState) {
+          template += `\n${scriptState}`
+        }
+
+        containerElement.innerHTML = template;
 
         // console.log('containerElement', containerElement);
 
@@ -126,6 +156,7 @@ export const registerMicroApp = (config = {}) => {
 
           lifeCycles = lifeCycles({
             ...customProps,
+            componentProps,
             rootId
           })
         }
@@ -153,6 +184,13 @@ export const registerMicroApp = (config = {}) => {
 
   start({ prefetch: true })
 };
+
+export const registerMicroComponent = (config = {}) => {
+  registerMicroApp({
+    ...config,
+    isComponent: true
+  })
+}
 
 export const registerMicroApps = (apps) => {
   apps.forEach(config => registerMicroApp(config))

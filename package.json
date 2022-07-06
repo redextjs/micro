@@ -2,6 +2,9 @@
   "name": "@redext/micro",
   "version": "0.0.1",
   "main": "dist/index.js",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build"
   },
