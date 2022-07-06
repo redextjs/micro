@@ -2,7 +2,7 @@
 
 Blazing fast, simple and complete solution for micro frontends
 
-##  Installation
+## Installation
 
 ```bash
 npm install -s @redext/micro
@@ -13,15 +13,27 @@ yarn add @redext/micro
 ## Use It
 
 ```js
-import { registerMicroApp } from '@redext/micro';
+import { registerMicroApp, registerMicroComponent } from '@redext/micro';
 
 registerMicroApp({
-      name: 'demo',
-      activePath: 'micro',
-      container: '#microfrontend',
-      entry: 'http://localhost:5000',
-      // loadScriptPath: '/root-config.jsx',
-      isHash: true,
-      // isProduction: true
+  orgName: '@redext-micro', // option
+  name: 'demo',
+  activePath: 'micro',
+  container: '#microfrontend',
+  entry: 'http://localhost:5000',
+  // loadScriptPath: '/root-config.jsx',
+  isHash: true,
+  // isProduction: true
+});
+
+registerMicroComponent({
+  orgName: '@redext-micro', // option
+  name: 'component',
+  activePath: 'micro',
+  container: '#microfrontend',
+  entry: 'http://localhost:5000',
+  // loadScriptPath: '/root-config.jsx',
+  isHash: true,
+  // isProduction: true
 });
 ```
