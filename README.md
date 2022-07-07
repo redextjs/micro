@@ -30,8 +30,8 @@ registerMicroComponent({
   orgName: '@redext-micro', // option
   name: 'component',
   activePath: 'micro',
-  container: '#microfrontend',
-  entry: 'http://localhost:5000',
+  container: '#micro-component',
+  entry: 'http://localhost:5000/components/blocks/MicroDemo',
   // loadScriptPath: '/root-config.jsx',
   isHash: true,
   // isProduction: true
