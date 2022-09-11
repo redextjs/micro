@@ -30,6 +30,7 @@ export const registerMicroApp = (config = {}) => {
     isComponent,
     isProduction,
     microWorker,
+    redirectTo,
     ...appConfig
   } = config;
 
@@ -56,7 +57,8 @@ export const registerMicroApp = (config = {}) => {
     name: appName,
     isHash,
     version: packageJson.version,
-    activePath: activePathFull
+    activePath: activePathFull,
+    redirectTo
   };
 
   const mountedApps = getMountedApps();
@@ -86,8 +88,7 @@ export const registerMicroApp = (config = {}) => {
       customProps,
       app: async () => {
         const { container } = appConfig;
-        let entry = appConfig.entry;
-        let loadScriptPath = appConfig.loadScriptPath;
+        let { entry, loadScriptPath } = appConfig;
 
         if (entry.endsWith('/')) {
           const lastIndex = entry.lastIndexOf('/');
