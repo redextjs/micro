@@ -8,6 +8,9 @@ import {
 import loadScript from './loadScript';
 import packageJson from '../package';
 
+const noop = () => {
+};
+
 const getContainerElement = (container) => {
   if (!container) {
     throw 'registerMicroApp config container required'
@@ -20,6 +23,10 @@ export const start = (config) => {
   startSingleSpa(config)
 };
 
+export const getRootId = (appName) => {
+  return appName.replace('@', '')
+}
+
 export const registerMicroApp = (config = {}) => {
   const {
     name,
@@ -29,8 +36,12 @@ export const registerMicroApp = (config = {}) => {
     orgName = '@redext-micro',
     isComponent,
     isProduction,
+    isSplash = true,
+    isDebug,
+    isDebugSplash,
     microWorker,
     redirectTo,
+    splashConfig = {},
     ...appConfig
   } = config;
 
@@ -88,7 +99,7 @@ export const registerMicroApp = (config = {}) => {
       customProps,
       app: async () => {
         const { container } = appConfig;
-        let { entry, loadScriptPath } = appConfig;
+        let { entry, loadScriptPath, splashElement } = appConfig;
 
         if (entry.endsWith('/')) {
           const lastIndex = entry.lastIndexOf('/');
@@ -96,22 +107,90 @@ export const registerMicroApp = (config = {}) => {
           entry = entry.substring(0, lastIndex)
         }
 
-        let template;
-
-        if (isComponent) {
-          const rootId = appName.replace('@', '')
-
-          template = `<div id="${rootId}">Loading</div>`
-        } else {
-          const response = await fetch(entry);
-
-          template = await response.text();
-        }
-
         const containerElement = getContainerElement(container);
 
         if (!containerElement) {
           throw 'containerElement not exist'
+        }
+
+        if (!loadScriptPath) {
+          loadScriptPath = isProduction ? '/root-config.js' : '/root-config.jsx'
+        }
+
+        let template;
+
+        if (isComponent) {
+          const rootId = getRootId(appName);
+
+          template = `<div id="${rootId}">Loading</div>`
+        } else {
+          if (isSplash) {
+            if (!splashElement) {
+              const { splashStyle = {}, logoUrl, logoStyle = {} } = splashConfig;
+
+              splashElement = document.createElement('div');
+
+              splashElement.style.position = 'absolute';
+              splashElement.style.width = '100%';
+              splashElement.style.height = '100%';
+              splashElement.style.zIndex = '9999';
+              splashElement.style.display = 'flex';
+              splashElement.style.alignItems = 'center';
+              splashElement.style.justifyContent = 'center';
+
+              Object.keys(splashStyle).forEach((key) => {
+                splashElement.style[key] = splashStyle[key];
+              });
+
+              splashElement.id = splashConfig?.id || 'redext-micro-splash';
+
+              if (logoUrl) {
+                const logoElement = document.createElement('img');
+
+                logoElement.src = logoUrl;
+                logoElement.alt = 'logo-splash';
+
+                Object.keys(logoStyle).forEach((key) => {
+                  logoElement.style[key] = logoStyle[key];
+                });
+
+                if (!logoStyle.height) {
+                  logoElement.style.height = '64px';
+                }
+
+                splashElement.appendChild(logoElement);
+              } else {
+                splashElement.innerHTML = 'Loading';
+              }
+            }
+
+            containerElement.append(splashElement);
+
+            if (isDebugSplash) {
+              throw 'Debug splash'
+            }
+          }
+
+          const response = await fetch(entry);
+
+          template = await response.text();
+
+          if (isSplash) {
+            const domparser = new DOMParser();
+            const doc = domparser.parseFromString(template, 'text/html');
+
+            const rootId = getRootId(appName);
+            const rootElement = doc.getElementById(rootId);
+            rootElement.innerHTML = splashElement.outerHTML;
+
+            const rootConfigScript = doc.querySelector(`script[src*="${loadScriptPath}"]`);
+
+            if (rootConfigScript) {
+              rootConfigScript.remove();
+            }
+
+            template = `${doc.head.outerHTML}\n${doc.body.innerHTML}`;
+          }
         }
 
         containerElement.setAttribute('data-name', appName);
@@ -133,10 +212,6 @@ export const registerMicroApp = (config = {}) => {
         // console.log('containerElement', containerElement);
 
         let lifeCycles;
-
-        if (!loadScriptPath) {
-          loadScriptPath = isProduction ? '/root-config.js' : '/root-config.jsx'
-        }
 
         if (loadScriptPath) {
           if (typeof loadScriptPath === 'string' && !loadScriptPath.startsWith('/')) {
