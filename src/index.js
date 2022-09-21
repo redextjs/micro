@@ -41,7 +41,9 @@ export const registerMicroApp = (config = {}) => {
     isDebugSplash,
     microWorker,
     redirectTo,
+    staticPath,
     splashConfig = {},
+    rootConfigScriptId = 'micro-root-config',
     ...appConfig
   } = config;
 
@@ -69,7 +71,8 @@ export const registerMicroApp = (config = {}) => {
     isHash,
     version: packageJson.version,
     activePath: activePathFull,
-    redirectTo
+    redirectTo,
+    staticPath
   };
 
   const mountedApps = getMountedApps();
@@ -117,6 +120,7 @@ export const registerMicroApp = (config = {}) => {
           loadScriptPath = isProduction ? '/root-config.js' : '/root-config.jsx'
         }
 
+        let loadScriptUrl;
         let template;
 
         if (isComponent) {
@@ -183,7 +187,24 @@ export const registerMicroApp = (config = {}) => {
             const rootElement = doc.getElementById(rootId);
             rootElement.innerHTML = splashElement.outerHTML;
 
-            const rootConfigScript = doc.querySelector(`script[src*="${loadScriptPath}"]`);
+            let rootConfigScript;
+
+            if (rootConfigScriptId) {
+              rootConfigScript = doc.getElementById(rootConfigScriptId)
+            }
+
+            if (rootConfigScript) {
+              const scriptSrc = rootConfigScript.getAttribute('src');
+              const regexUrl= /^((http|https):\/\/)([A-z0-9]+)/;
+
+              if (scriptSrc && regexUrl.test(scriptSrc)) {
+                loadScriptUrl = rootConfigScript.src;
+              }
+            }
+
+            if (!rootConfigScript) {
+              rootConfigScript = doc.querySelector(`script[src*="${loadScriptPath}"]`);
+            }
 
             if (rootConfigScript) {
               rootConfigScript.remove();
@@ -213,14 +234,20 @@ export const registerMicroApp = (config = {}) => {
 
         let lifeCycles;
 
-        if (loadScriptPath) {
+        if (loadScriptPath && !loadScriptUrl) {
           if (typeof loadScriptPath === 'string' && !loadScriptPath.startsWith('/')) {
             loadScriptPath = `/${loadScriptPath}`;
           }
 
+          loadScriptUrl = `${entry}${loadScriptPath === true ? '/root-config.js' : loadScriptPath}`
+        }
+
+        if (loadScriptUrl) {
+          // console.log('loadScriptUrl', loadScriptUrl)
+
           lifeCycles = await loadScript({
             isModule: true,
-            url: `${entry}${loadScriptPath === true ? '/root-config.js' : loadScriptPath}`,
+            url: loadScriptUrl,
             sdkGlobal: appName
           });
         }
