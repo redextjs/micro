@@ -122,6 +122,7 @@ export const registerMicroApp = (config = {}) => {
 
         let loadScriptUrl;
         let template;
+        let appVersion;
 
         if (isComponent) {
           const rootId = getRootId(appName);
@@ -179,32 +180,46 @@ export const registerMicroApp = (config = {}) => {
 
           template = await response.text();
 
-          if (isSplash) {
-            const domparser = new DOMParser();
-            const doc = domparser.parseFromString(template, 'text/html');
+          const domparser = new DOMParser();
+          const doc = domparser.parseFromString(template, 'text/html');
 
+          let rootConfigScript;
+
+          if (rootConfigScriptId) {
+            rootConfigScript = doc.getElementById(rootConfigScriptId)
+          }
+
+          if (rootConfigScript) {
+            const scriptSrc = rootConfigScript.getAttribute('src');
+            const regexUrl = /^((http|https):\/\/)([A-z0-9]+)/;
+
+            if (scriptSrc && regexUrl.test(scriptSrc)) {
+              loadScriptUrl = rootConfigScript.src;
+            }
+          }
+
+          if (!rootConfigScript) {
+            rootConfigScript = doc.querySelector(`script[src*="${loadScriptPath}"]`);
+          }
+
+          if (rootConfigScript) {
+            appVersion = rootConfigScript.getAttribute('data-app-version');
+
+            if (!appVersion) {
+              const metaAppVersion = doc.querySelector(`meta[name="redext-micro-app-version"]`);
+
+              appVersion = metaAppVersion && metaAppVersion.content;
+            }
+
+            if (!appVersion) {
+              console.warn('registerMicroApp warning: Please add attribute data-app-version in script tag avoid browser cache');
+            }
+          }
+
+          if (isSplash) {
             const rootId = getRootId(appName);
             const rootElement = doc.getElementById(rootId);
             rootElement.innerHTML = splashElement.outerHTML;
-
-            let rootConfigScript;
-
-            if (rootConfigScriptId) {
-              rootConfigScript = doc.getElementById(rootConfigScriptId)
-            }
-
-            if (rootConfigScript) {
-              const scriptSrc = rootConfigScript.getAttribute('src');
-              const regexUrl= /^((http|https):\/\/)([A-z0-9]+)/;
-
-              if (scriptSrc && regexUrl.test(scriptSrc)) {
-                loadScriptUrl = rootConfigScript.src;
-              }
-            }
-
-            if (!rootConfigScript) {
-              rootConfigScript = doc.querySelector(`script[src*="${loadScriptPath}"]`);
-            }
 
             if (rootConfigScript) {
               rootConfigScript.remove();
@@ -243,6 +258,10 @@ export const registerMicroApp = (config = {}) => {
         }
 
         if (loadScriptUrl) {
+          if (appVersion) {
+            loadScriptUrl += `?v=${appVersion}`
+          }
+
           // console.log('loadScriptUrl', loadScriptUrl)
 
           lifeCycles = await loadScript({
