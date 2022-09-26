@@ -27,6 +27,17 @@ export const getRootId = (appName) => {
   return appName.replace('@', '')
 }
 
+// const lifeCyclesProxy = new Proxy({}, {
+//   get: (a, prop) => {
+//     return a[prop]
+//   },
+//   set: (a, prop, value) => {
+//     a[prop] = value;
+//   }
+// });
+
+const lifeCyclesProxy = {};
+
 export const registerMicroApp = (config = {}) => {
   const {
     name,
@@ -44,36 +55,11 @@ export const registerMicroApp = (config = {}) => {
     staticPath,
     splashConfig = {},
     rootConfigScriptId = 'micro-root-config',
+    isUnRegister,
     ...appConfig
   } = config;
 
   const appName = orgName ? `${orgName}/${name}` : name;
-
-  let isHash = config.isHash;
-  let activeWhen = activePath;
-
-  if (isHash && !activePath.startsWith('/#/')) {
-    if (activePath.startsWith('/')) {
-      activeWhen = `/#${activePath}`
-    } else {
-      activeWhen = `/#/${activePath}`
-    }
-  }
-
-  if (activePath.startsWith('/#/')) {
-    isHash = true
-  }
-
-  const activePathFull = activeWhen.replace('/#', '');
-
-  const microState = {
-    name: appName,
-    isHash,
-    version: packageJson.version,
-    activePath: activePathFull,
-    redirectTo,
-    staticPath
-  };
 
   const mountedApps = getMountedApps();
 
@@ -83,6 +69,38 @@ export const registerMicroApp = (config = {}) => {
   // console.log('getMountedApps', getMountedApps());
 
   const hasRegisterApp = !mountedApps.includes(appName) && !appStatus;
+
+  let isHash = config.isHash;
+  let activeWhen;
+
+  if (typeof activePath === 'function') {
+    activeWhen = (location) => activePath({ location, isHash, isProduction })
+  } else {
+    activeWhen = activePath;
+
+    if (isHash && !activePath.startsWith('/#/')) {
+      if (activePath.startsWith('/')) {
+        activeWhen = `/#${activePath}`
+      } else {
+        activeWhen = `/#/${activePath}`
+      }
+    }
+
+    if (activePath.startsWith('/#/')) {
+      isHash = true
+    }
+  }
+
+  const activePathFull = typeof activeWhen === 'function' ? activeWhen(window.location) : activeWhen.replace('/#', '');
+
+  const microState = {
+    name: appName,
+    isHash,
+    version: packageJson.version,
+    activePath: activePathFull,
+    redirectTo,
+    staticPath
+  };
 
   // console.log('hasRegisterApp', hasRegisterApp);
 
@@ -95,25 +113,44 @@ export const registerMicroApp = (config = {}) => {
     customProps.microWorker = microWorker
   }
 
+  const insertAttributeToElement = (containerElement, template) => {
+    containerElement.setAttribute('data-name', appName);
+    containerElement.setAttribute('data-version', packageJson.version);
+    containerElement.setAttribute('data-active-path', activePathFull);
+
+    let scriptState;
+
+    if (!isComponent) {
+      scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
+    }
+
+    if (scriptState) {
+      template += `\n${scriptState}`
+    }
+
+    containerElement.innerHTML = template;
+  }
+
+  const { container } = appConfig;
+
+  const containerElement = getContainerElement(container);
+
+  if (!containerElement) {
+    throw 'containerElement not exist'
+  }
+
   if (hasRegisterApp) {
     registerApplication({
       name: appName,
       activeWhen,
       customProps,
       app: async () => {
-        const { container } = appConfig;
         let { entry, loadScriptPath, splashElement } = appConfig;
 
         if (entry.endsWith('/')) {
           const lastIndex = entry.lastIndexOf('/');
 
           entry = entry.substring(0, lastIndex)
-        }
-
-        const containerElement = getContainerElement(container);
-
-        if (!containerElement) {
-          throw 'containerElement not exist'
         }
 
         if (!loadScriptPath) {
@@ -123,6 +160,7 @@ export const registerMicroApp = (config = {}) => {
         let loadScriptUrl;
         let template;
         let appVersion;
+        lifeCyclesProxy[appName] = {};
 
         if (isComponent) {
           const rootId = getRootId(appName);
@@ -229,21 +267,9 @@ export const registerMicroApp = (config = {}) => {
           }
         }
 
-        containerElement.setAttribute('data-name', appName);
-        containerElement.setAttribute('data-version', packageJson.version);
-        containerElement.setAttribute('data-active-path', activePathFull);
+        lifeCyclesProxy[appName].template = template;
 
-        let scriptState;
-
-        if (!isComponent) {
-          scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
-        }
-
-        if (scriptState) {
-          template += `\n${scriptState}`
-        }
-
-        containerElement.innerHTML = template;
+        insertAttributeToElement(containerElement, template);
 
         // console.log('containerElement', containerElement);
 
@@ -289,9 +315,12 @@ export const registerMicroApp = (config = {}) => {
           throw `Check root-config file code: ${globalConfig}`
         }
 
-        return {
-          ...lifeCycles,
-          unmount: [
+        const newLifeCycles = {
+          ...lifeCycles
+        }
+
+        if (isUnRegister) {
+          newLifeCycles.unmount = [
             async () => {
               await unregisterApplication(appName);
 
@@ -300,8 +329,30 @@ export const registerMicroApp = (config = {}) => {
             lifeCycles?.unmount
           ]
         }
+
+        lifeCyclesProxy[appName] = {
+          ...lifeCyclesProxy[appName],
+          ...newLifeCycles
+        };
+
+        return newLifeCycles
       }
     });
+  } else {
+    console.log('appStatus', appStatus)
+
+    const lifeCycles = lifeCyclesProxy[appName];
+
+    if (lifeCycles) {
+      // console.log('lifeCycles', appName, lifeCycles);
+
+      insertAttributeToElement(containerElement, lifeCycles.template)
+
+      lifeCycles?.update({
+        name: appName,
+        ...customProps
+      })
+    }
   }
 
   start({ prefetch: true })
