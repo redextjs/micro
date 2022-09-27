@@ -339,19 +339,26 @@ export const registerMicroApp = (config = {}) => {
       }
     });
   } else {
-    console.log('appStatus', appStatus)
+    const rootId = getRootId(appName);
+    const rootElement = containerElement.getElementById(rootId);
 
-    const lifeCycles = lifeCyclesProxy[appName];
+    const hasReMount = !(rootElement && rootElement.hasChildNodes());
 
-    if (lifeCycles) {
-      // console.log('lifeCycles', appName, lifeCycles);
+    if (hasReMount) {
+      const lifeCycles = lifeCyclesProxy[appName];
 
-      insertAttributeToElement(containerElement, lifeCycles.template)
+      if (lifeCycles) {
+        // console.log('lifeCycles', appName, lifeCycles);
 
-      lifeCycles?.update({
-        name: appName,
-        ...customProps
-      })
+        insertAttributeToElement(containerElement, lifeCycles.template);
+
+        const reMount = lifeCycles?.update || lifeCycles?.mount;
+
+        reMount({
+          name: appName,
+          ...customProps
+        })
+      }
     }
   }
 
