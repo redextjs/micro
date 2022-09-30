@@ -42,6 +42,7 @@ export const registerMicroApp = (config = {}) => {
   const {
     name,
     activePath,
+    container,
     props = {},
     componentProps = {},
     orgName = '@redext-micro',
@@ -56,6 +57,11 @@ export const registerMicroApp = (config = {}) => {
     splashConfig = {},
     rootConfigScriptId = 'micro-root-config',
     isUnRegister,
+    isAlive,
+    isCustomElements,
+    isShadowRoot = true,
+    fetch = window.fetch,
+    plugins = [],
     ...appConfig
   } = config;
 
@@ -99,7 +105,9 @@ export const registerMicroApp = (config = {}) => {
     version: packageJson.version,
     activePath: activePathFull,
     redirectTo,
-    staticPath
+    staticPath,
+    container,
+    isShadowRoot
   };
 
   // console.log('hasRegisterApp', hasRegisterApp);
@@ -113,10 +121,14 @@ export const registerMicroApp = (config = {}) => {
     customProps.microWorker = microWorker
   }
 
-  const insertAttributeToElement = (containerElement, template) => {
+  const insertAttributeToElement = ({ containerElement, template, config = {} }) => {
+    const { isShadowRoot = true } = config;
+
     containerElement.setAttribute('data-name', appName);
     containerElement.setAttribute('data-version', packageJson.version);
     containerElement.setAttribute('data-active-path', activePathFull);
+
+    console.log('containerElement', containerElement);
 
     let scriptState;
 
@@ -128,10 +140,20 @@ export const registerMicroApp = (config = {}) => {
       template += `\n${scriptState}`
     }
 
-    containerElement.innerHTML = template;
-  }
+    if (isShadowRoot) {
+      containerElement.innerHTML = '';
 
-  const { container } = appConfig;
+      const shadowRoot = containerElement.attachShadow({ mode: 'open' });
+
+      console.log('template', template);
+
+      shadowRoot.innerHTML = template;
+
+      console.log('shadowRoot', shadowRoot);
+    } else {
+      containerElement.innerHTML = template;
+    }
+  }
 
   const containerElement = getContainerElement(container);
 
@@ -269,9 +291,7 @@ export const registerMicroApp = (config = {}) => {
 
         lifeCyclesProxy[appName].template = template;
 
-        insertAttributeToElement(containerElement, template);
-
-        // console.log('containerElement', containerElement);
+        insertAttributeToElement({ containerElement, template, config });
 
         let lifeCycles;
 
@@ -300,7 +320,7 @@ export const registerMicroApp = (config = {}) => {
         // console.log('lifeCycles', lifeCycles);
 
         if (typeof lifeCycles === 'function') {
-          const rootId = appName.replace('@', '')
+          const rootId = getRootId(appName)
 
           lifeCycles = lifeCycles({
             ...customProps,
@@ -313,6 +333,10 @@ export const registerMicroApp = (config = {}) => {
           const globalConfig = `(global => { global[__APP_NAME__] = { bootstrap, mount, unmount }; })(window)`;
 
           throw `Check root-config file code: ${globalConfig}`
+        }
+
+        if (isDebug) {
+          throw 'Debug MicroApp'
         }
 
         const newLifeCycles = {
@@ -350,7 +374,7 @@ export const registerMicroApp = (config = {}) => {
       if (lifeCycles) {
         // console.log('lifeCycles', appName, lifeCycles);
 
-        insertAttributeToElement(containerElement, lifeCycles.template);
+        insertAttributeToElement({ containerElement, template: lifeCycles.template, config });
 
         const reMount = lifeCycles?.update || lifeCycles?.mount;
 
