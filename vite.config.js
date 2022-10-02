@@ -12,7 +12,7 @@ module.exports = ({ mode }) => {
     },
     base: './',
     build: {
-      minify: true,
+      minify: false,
       rollupOptions: {
         input: './src',
         output: {

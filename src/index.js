@@ -128,7 +128,7 @@ export const registerMicroApp = (config = {}) => {
     containerElement.setAttribute('data-version', packageJson.version);
     containerElement.setAttribute('data-active-path', activePathFull);
 
-    console.log('containerElement', containerElement);
+    // console.log('containerElement', containerElement);
 
     let scriptState;
 
@@ -147,9 +147,11 @@ export const registerMicroApp = (config = {}) => {
 
       console.log('template', template);
 
-      shadowRoot.innerHTML = template;
+      shadowRoot.innerHTML = `<html lang="vi">${template}</html>`;
 
       console.log('shadowRoot', shadowRoot);
+
+      containerElement.innerHTML = scriptState
     } else {
       containerElement.innerHTML = template;
     }
@@ -246,7 +248,7 @@ export const registerMicroApp = (config = {}) => {
           let rootConfigScript;
 
           if (rootConfigScriptId) {
-            rootConfigScript = doc.getElementById(rootConfigScriptId)
+            rootConfigScript = doc.querySelector(`script[id="${rootConfigScriptId}"]`)
           }
 
           if (rootConfigScript) {
@@ -278,7 +280,7 @@ export const registerMicroApp = (config = {}) => {
 
           if (isSplash) {
             const rootId = getRootId(appName);
-            const rootElement = doc.getElementById(rootId);
+            const rootElement = doc.querySelector(`div[id="${rootId}"]`);
             rootElement.innerHTML = splashElement.outerHTML;
 
             if (rootConfigScript) {
@@ -364,7 +366,18 @@ export const registerMicroApp = (config = {}) => {
     });
   } else {
     const rootId = getRootId(appName);
-    const rootElement = containerElement.getElementById(rootId);
+
+    let rootElement;
+
+    if (isShadowRoot) {
+      const shadowRoot = containerElement.shadowRoot;
+
+      if (shadowRoot) {
+        rootElement = shadowRoot.querySelector(`div[id="${rootId}"]`);
+      }
+    } else {
+      rootElement = containerElement.querySelector(`div[id="${rootId}"]`);
+    }
 
     const hasReMount = !(rootElement && rootElement.hasChildNodes());
 
