@@ -11,6 +11,12 @@ import packageJson from '../package';
 const noop = () => {
 };
 
+const removeAllChildNodes = (parent) => {
+  while (parent.firstChild) {
+    parent.removeChild(parent.firstChild);
+  }
+};
+
 const getContainerElement = (container) => {
   if (!container) {
     throw 'registerMicroApp config container required'
@@ -59,7 +65,7 @@ export const registerMicroApp = (config = {}) => {
     isUnRegister,
     isAlive,
     isCustomElements,
-    isShadowRoot = true,
+    isShadowRoot,
     fetch = window.fetch,
     plugins = [],
     ...appConfig
@@ -122,7 +128,7 @@ export const registerMicroApp = (config = {}) => {
   }
 
   const insertAttributeToElement = ({ containerElement, template, config = {} }) => {
-    const { isShadowRoot = true } = config;
+    const { isShadowRoot } = config;
 
     containerElement.setAttribute('data-name', appName);
     containerElement.setAttribute('data-version', packageJson.version);
@@ -136,24 +142,25 @@ export const registerMicroApp = (config = {}) => {
       scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
     }
 
-    if (scriptState) {
+    if (scriptState && !isShadowRoot) {
       template += `\n${scriptState}`
     }
 
-    if (isShadowRoot) {
-      containerElement.innerHTML = '';
+    const tmpl = document.createElement('template');
 
+    tmpl.innerHTML = template;
+
+    const templateContent = tmpl.content.cloneNode(true);
+
+    if (isShadowRoot) {
       const shadowRoot = containerElement.attachShadow({ mode: 'open' });
 
-      console.log('template', template);
+      shadowRoot.appendChild(templateContent);
 
-      shadowRoot.innerHTML = `<html lang="vi">${template}</html>`;
-
-      console.log('shadowRoot', shadowRoot);
-
-      containerElement.innerHTML = scriptState
+      containerElement.innerHTML = scriptState;
     } else {
-      containerElement.innerHTML = template;
+      containerElement.innerHTML = '';
+      containerElement.appendChild(templateContent);
     }
   }
 
