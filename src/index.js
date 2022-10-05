@@ -31,7 +31,11 @@ export const start = (config) => {
 
 export const getRootId = (appName) => {
   return appName.replace('@', '')
-}
+};
+
+export const getElementApp = (documentTarget, rootId) => {
+  return documentTarget.getElementById ? documentTarget.getElementById(rootId) : documentTarget.querySelector(`[id="${rootId}"]`)
+};
 
 // const lifeCyclesProxy = new Proxy({}, {
 //   get: (a, prop) => {
@@ -127,10 +131,10 @@ export const registerMicroApp = (config = {}) => {
     customProps.microWorker = microWorker
   }
 
-  const insertAttributeToElement = ({ containerElement, template, config = {} }) => {
+  const insertTemplateToElement = ({ containerElement, template, config = {} }) => {
     const { isShadowRoot } = config;
 
-    containerElement.setAttribute('data-name', appName);
+    containerElement.setAttribute('data-name', `${appName}:container`);
     containerElement.setAttribute('data-version', packageJson.version);
     containerElement.setAttribute('data-active-path', activePathFull);
 
@@ -139,11 +143,19 @@ export const registerMicroApp = (config = {}) => {
     let scriptState;
 
     if (!isComponent) {
-      scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName} type="application/json">${JSON.stringify(microState)}</script>`;
+      scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName}:state type="application/json">${JSON.stringify(microState)}</script>`;
     }
 
     if (scriptState && !isShadowRoot) {
       template += `\n${scriptState}`
+    }
+
+    let portalId;
+
+    if (isShadowRoot) {
+      portalId = `${getRootId(appName)}:portal`;
+
+      template += `<div id="${portalId}"></div>`;
     }
 
     const tmpl = document.createElement('template');
@@ -156,6 +168,36 @@ export const registerMicroApp = (config = {}) => {
       const shadowRoot = containerElement.attachShadow({ mode: 'open' });
 
       shadowRoot.appendChild(templateContent);
+
+      if (portalId) {
+        const script = document.createElement('script');
+
+        script.type = 'text/javascript';
+
+        const getPortalElement = () => {
+          const containerElement = document.querySelector(`[data-name="${appName}:container"]`);
+
+          return containerElement.shadowRoot.querySelector(`[id="${portalId}"]`);
+        }
+
+        const observerCallback = (mutationList, observer) => {
+          const mutationRecord = mutationList.find(mutation => mutation.attributeName === 'style');
+
+          if (mutationRecord) {
+            const style = mutationRecord.target.style;
+
+            document.body.style.overflow = style.overflow;
+          }
+        }
+
+        const observerConnect = `observer.observe(element, { attributes: true });`
+
+        const code = `const appName = ${JSON.stringify(appName)}; \n const portalId = ${JSON.stringify(portalId)}; \n const observer = new MutationObserver(${observerCallback.toString()}); \n const getPortalElement = ${getPortalElement.toString()}; \n const element = getPortalElement(); \n ${observerConnect}`;
+
+        script.appendChild(document.createTextNode(code));
+
+        shadowRoot.appendChild(script);
+      }
 
       containerElement.innerHTML = scriptState;
     } else {
@@ -300,7 +342,7 @@ export const registerMicroApp = (config = {}) => {
 
         lifeCyclesProxy[appName].template = template;
 
-        insertAttributeToElement({ containerElement, template, config });
+        insertTemplateToElement({ containerElement, template, config });
 
         let lifeCycles;
 
@@ -380,10 +422,10 @@ export const registerMicroApp = (config = {}) => {
       const shadowRoot = containerElement.shadowRoot;
 
       if (shadowRoot) {
-        rootElement = shadowRoot.querySelector(`div[id="${rootId}"]`);
+        rootElement = getElementApp(shadowRoot, rootId);
       }
     } else {
-      rootElement = containerElement.querySelector(`div[id="${rootId}"]`);
+      rootElement = getElementApp(containerElement, rootId);
     }
 
     const hasReMount = !(rootElement && rootElement.hasChildNodes());
@@ -394,7 +436,7 @@ export const registerMicroApp = (config = {}) => {
       if (lifeCycles) {
         // console.log('lifeCycles', appName, lifeCycles);
 
-        insertAttributeToElement({ containerElement, template: lifeCycles.template, config });
+        insertTemplateToElement({ containerElement, template: lifeCycles.template, config });
 
         const reMount = lifeCycles?.update || lifeCycles?.mount;
 
