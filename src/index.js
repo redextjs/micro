@@ -37,6 +37,118 @@ export const getElementApp = (documentTarget, rootId) => {
   return documentTarget.getElementById ? documentTarget.getElementById(rootId) : documentTarget.querySelector(`[id="${rootId}"]`)
 };
 
+const insertTemplateToElement = ({ containerElement, template, appName, activePathFull, microState, config = {} }) => {
+  const { isShadowRoot, isComponent, isProduction } = config;
+
+  containerElement.setAttribute('data-name', `${appName}:container`);
+  containerElement.setAttribute('data-version', packageJson.version);
+  containerElement.setAttribute('data-active-path', activePathFull);
+
+  // console.log('containerElement', containerElement);
+
+  let scriptState;
+
+  if (!isComponent) {
+    scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName}:state type="application/json">${JSON.stringify(microState)}</script>`;
+  }
+
+  if (scriptState && !isShadowRoot) {
+    template += `\n${scriptState}`
+  }
+
+  let portalId;
+
+  if (isShadowRoot) {
+    portalId = `${getRootId(appName)}:portal`;
+
+    template += `<div id="${portalId}"></div>`;
+  }
+
+  const tmpl = document.createElement('template');
+
+  tmpl.innerHTML = template;
+
+  const templateContent = tmpl.content.cloneNode(true);
+
+  if (isShadowRoot) {
+    const shadowRoot = containerElement.attachShadow({ mode: 'open' });
+
+    shadowRoot.appendChild(templateContent);
+
+    if (portalId) {
+      const script = document.createElement('script');
+
+      script.type = 'text/javascript';
+
+      const getPortalElement = () => {
+        const containerElement = document.querySelector(`[data-name="${appName}:container"]`);
+
+        return containerElement.shadowRoot.querySelector(`[id="${portalId}"]`);
+      }
+
+      const observerCallback = (mutationList, observer) => {
+        const mutationRecord = mutationList.find(mutation => mutation.attributeName === 'style');
+
+        if (mutationRecord) {
+          const style = mutationRecord.target.style;
+
+          document.body.style.overflow = style.overflow;
+        }
+      }
+
+      const code = [
+        `const appName = ${JSON.stringify(appName)};`,
+        `const portalId = ${JSON.stringify(portalId)};`,
+        `const observer = new MutationObserver(${observerCallback.toString()});`,
+        `const getPortalElement = ${getPortalElement.toString()};`,
+        `const element = getPortalElement();`,
+        `observer.observe(element, { attributes: true });`
+      ].join('\n');
+
+      script.appendChild(document.createTextNode(code));
+
+      shadowRoot.appendChild(script);
+    }
+
+    if (!isProduction) {
+      const script = document.createElement('script');
+
+      script.type = 'text/javascript';
+
+      const moveObserverCallback = () => {
+        const containerMoveStyle = document.querySelector(`[data-name="${moveAppName}:container"]`);
+
+        const tagIdComment = `/* ${moveAppName} */`;
+
+        const moveStyles = Array.from(document.head.children)
+          .filter(x => x instanceof HTMLStyleElement)
+          .filter((x) => x.textContent?.includes(tagIdComment))
+          .map((x) => {
+            document.head.removeChild(x);
+            return x.cloneNode(true)
+          });
+
+        containerMoveStyle.shadowRoot.append(...moveStyles);
+      }
+
+      const code = [
+        `const moveAppName = ${JSON.stringify(appName)};`,
+        `const moveObserver = new MutationObserver(${moveObserverCallback.toString()});`,
+        `moveObserver.observe(document.head, { characterData: true, childList: true, subtree: true });`
+      ].join('\n');
+
+      script.appendChild(document.createTextNode(code));
+
+      shadowRoot.appendChild(script);
+    }
+
+    containerElement.innerHTML = scriptState;
+  } else {
+    containerElement.innerHTML = '';
+    containerElement.appendChild(templateContent);
+  }
+}
+
 // const lifeCyclesProxy = new Proxy({}, {
 //   get: (a, prop) => {
 //     return a[prop]
@@ -55,7 +167,6 @@ export const registerMicroApp = (config = {}) => {
     container,
     props = {},
     componentProps = {},
-    orgName = '@redext-micro',
     isComponent,
     isProduction,
     isSplash = true,
@@ -74,6 +185,14 @@ export const registerMicroApp = (config = {}) => {
     plugins = [],
     ...appConfig
   } = config;
+
+  let {
+    orgName = '@redext-micro',
+  } = config;
+
+  if (!orgName.startsWith('@')) {
+    orgName = `@${orgName}`
+  }
 
   const appName = orgName ? `${orgName}/${name}` : name;
 
@@ -129,81 +248,6 @@ export const registerMicroApp = (config = {}) => {
 
   if (microWorker) {
     customProps.microWorker = microWorker
-  }
-
-  const insertTemplateToElement = ({ containerElement, template, config = {} }) => {
-    const { isShadowRoot } = config;
-
-    containerElement.setAttribute('data-name', `${appName}:container`);
-    containerElement.setAttribute('data-version', packageJson.version);
-    containerElement.setAttribute('data-active-path', activePathFull);
-
-    // console.log('containerElement', containerElement);
-
-    let scriptState;
-
-    if (!isComponent) {
-      scriptState = `<script id="__REDEXT_MICRO_STATE__" data-name=${appName}:state type="application/json">${JSON.stringify(microState)}</script>`;
-    }
-
-    if (scriptState && !isShadowRoot) {
-      template += `\n${scriptState}`
-    }
-
-    let portalId;
-
-    if (isShadowRoot) {
-      portalId = `${getRootId(appName)}:portal`;
-
-      template += `<div id="${portalId}"></div>`;
-    }
-
-    const tmpl = document.createElement('template');
-
-    tmpl.innerHTML = template;
-
-    const templateContent = tmpl.content.cloneNode(true);
-
-    if (isShadowRoot) {
-      const shadowRoot = containerElement.attachShadow({ mode: 'open' });
-
-      shadowRoot.appendChild(templateContent);
-
-      if (portalId) {
-        const script = document.createElement('script');
-
-        script.type = 'text/javascript';
-
-        const getPortalElement = () => {
-          const containerElement = document.querySelector(`[data-name="${appName}:container"]`);
-
-          return containerElement.shadowRoot.querySelector(`[id="${portalId}"]`);
-        }
-
-        const observerCallback = (mutationList, observer) => {
-          const mutationRecord = mutationList.find(mutation => mutation.attributeName === 'style');
-
-          if (mutationRecord) {
-            const style = mutationRecord.target.style;
-
-            document.body.style.overflow = style.overflow;
-          }
-        }
-
-        const observerConnect = `observer.observe(element, { attributes: true });`
-
-        const code = `const appName = ${JSON.stringify(appName)}; \n const portalId = ${JSON.stringify(portalId)}; \n const observer = new MutationObserver(${observerCallback.toString()}); \n const getPortalElement = ${getPortalElement.toString()}; \n const element = getPortalElement(); \n ${observerConnect}`;
-
-        script.appendChild(document.createTextNode(code));
-
-        shadowRoot.appendChild(script);
-      }
-
-      containerElement.innerHTML = scriptState;
-    } else {
-      containerElement.innerHTML = '';
-      containerElement.appendChild(templateContent);
-    }
   }
 
   const containerElement = getContainerElement(container);
@@ -342,7 +386,7 @@ export const registerMicroApp = (config = {}) => {
 
         lifeCyclesProxy[appName].template = template;
 
-        insertTemplateToElement({ containerElement, template, config });
+        insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
 
         let lifeCycles;
 
@@ -436,7 +480,14 @@ export const registerMicroApp = (config = {}) => {
       if (lifeCycles) {
         // console.log('lifeCycles', appName, lifeCycles);
 
-        insertTemplateToElement({ containerElement, template: lifeCycles.template, config });
+        insertTemplateToElement({
+          containerElement,
+          template: lifeCycles.template,
+          appName,
+          activePathFull,
+          microState,
+          config
+        });
 
         const reMount = lifeCycles?.update || lifeCycles?.mount;
 

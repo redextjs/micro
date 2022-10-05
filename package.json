@@ -1,6 +1,6 @@
 {
   "name": "@redext/micro",
-  "version": "0.0.1-staging-99",
+  "version": "0.0.1-staging-104",
   "main": "dist/index.js",
   "publishConfig": {
     "access": "public"
