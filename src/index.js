@@ -64,6 +64,8 @@ const insertTemplateToElement = ({
 }) => {
   const { isShadowRoot, isComponent, isProduction } = config;
 
+  // console.log('containerElement', containerElement)
+
   containerElement.setAttribute('data-name', `${appName}:container`);
   containerElement.setAttribute('data-version', packageJson.version);
   containerElement.setAttribute('data-active-path', activePathFull);
@@ -94,8 +96,12 @@ const insertTemplateToElement = ({
 
   const templateContent = tmpl.content.cloneNode(true);
 
+  console.log('templateContent', template, templateContent)
+
   if (isShadowRoot) {
     const shadowRoot = containerElement.shadowRoot || containerElement.attachShadow({ mode: 'open' });
+
+    removeAllChildNodes(shadowRoot);
 
     shadowRoot.appendChild(templateContent);
 
@@ -155,10 +161,14 @@ const insertTemplateToElement = ({
     }
 
     containerElement.innerHTML = scriptState;
+
+    console.log('containerElement', containerElement)
   } else {
     containerElement.innerHTML = '';
     containerElement.appendChild(templateContent);
   }
+
+  console.log('insertTemplateToElement')
 };
 
 // const lifeCyclesProxy = new Proxy({}, {
@@ -170,7 +180,9 @@ const insertTemplateToElement = ({
 //   }
 // });
 
-const lifeCyclesProxy = {};
+window.lifeCyclesProxy = {};
+
+let reMountSuccess = false;
 
 export const registerMicroApp = (config = {}) => {
   const {
@@ -195,6 +207,7 @@ export const registerMicroApp = (config = {}) => {
     isShadowRoot,
     fetch = window.fetch,
     plugins = [],
+    urlRerouteOnly = true,
     ...appConfig
   } = config;
 
@@ -262,21 +275,7 @@ export const registerMicroApp = (config = {}) => {
     customProps.microWorker = microWorker
   }
 
-  const containerElement = getContainerElement(container);
-
-  if (!containerElement) {
-    throw 'containerElement not exist'
-  }
-
-  if (!containerElement.style.position) {
-    containerElement.style.position = 'relative';
-  }
-
-  if (!containerElement.style.minHeight) {
-    containerElement.style.minHeight = '30vh';
-  }
-
-  // console.log('hasRegisterApp', hasRegisterApp);
+  console.log('hasRegisterApp', hasRegisterApp);
 
   if (hasRegisterApp) {
     registerApplication({
@@ -284,6 +283,28 @@ export const registerMicroApp = (config = {}) => {
       activeWhen,
       customProps,
       app: async () => {
+        console.log('reMountSuccess', reMountSuccess)
+
+        if (reMountSuccess) {
+          return
+        }
+
+        const containerElement = getContainerElement(container);
+
+        console.log('containerElement', container, containerElement)
+
+        if (!containerElement) {
+          throw 'containerElement not exist'
+        }
+
+        if (!containerElement.style.position) {
+          containerElement.style.position = 'relative';
+        }
+
+        if (!containerElement.style.minHeight) {
+          containerElement.style.minHeight = '30vh';
+        }
+
         let { entry, loadScriptPath, splashElement } = appConfig;
 
         if (entry.endsWith('/')) {
@@ -410,6 +431,10 @@ export const registerMicroApp = (config = {}) => {
 
         insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
 
+        console.log('before mount', getContainerElement(container));
+        console.log('containerElement mount', containerElement, document.querySelector(container))
+        console.log('template mount', template);
+
         let lifeCycles;
 
         if (loadScriptPath && !loadScriptUrl) {
@@ -432,6 +457,8 @@ export const registerMicroApp = (config = {}) => {
             url: loadScriptUrl,
             sdkGlobal: appName
           });
+
+          console.log('lifeCycles', lifeCycles)
         }
 
         // console.log('lifeCycles', lifeCycles);
@@ -456,8 +483,26 @@ export const registerMicroApp = (config = {}) => {
           throw 'Debug MicroApp'
         }
 
+        console.log('loadApp')
+
         const newLifeCycles = {
           ...lifeCycles,
+          mount: [
+            // async () => {
+            //   console.log('before mount', getContainerElement(container));
+            //   console.log('containerElement mount', containerElement, document.querySelector(container))
+            //   console.log('template mount', template)
+            //
+            //   insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
+            // },
+            async (props) => {
+              console.log('mount', props);
+              console.log('container', containerElement, document.querySelector(container));
+              console.log('state', document.querySelector(`#__REDEXT_MICRO_STATE__[data-name="${appName}:state"]`));
+
+              return await lifeCycles?.mount(props)
+            }
+          ],
           unmount: [
             async () => {
               console.log('before unmount');
@@ -465,9 +510,7 @@ export const registerMicroApp = (config = {}) => {
               if (!isKeepAlive) {
                 await unregisterApplication(appName);
               } else {
-                // unloadApplication(appName, { waitForUnmount: true }).then(data => {
-                //   console.log('data', data)
-                // });
+                await unloadApplication(appName)
               }
 
               // if (containerElement.shadowRoot) {
@@ -499,6 +542,21 @@ export const registerMicroApp = (config = {}) => {
       }
     });
   } else {
+    console.log('reMount')
+    const containerElement = getContainerElement(container);
+
+    if (!containerElement) {
+      throw 'containerElement not exist'
+    }
+
+    if (!containerElement.style.position) {
+      containerElement.style.position = 'relative';
+    }
+
+    if (!containerElement.style.minHeight) {
+      containerElement.style.minHeight = '30vh';
+    }
+
     const rootId = getRootId(appName);
 
     let rootElement;
@@ -523,20 +581,22 @@ export const registerMicroApp = (config = {}) => {
       if (lifeCycles) {
         console.log('lifeCycles', appName, lifeCycles);
 
-        insertTemplateToElement({
-          containerElement,
-          template: lifeCycles.template,
-          appName,
-          activePathFull,
-          microState,
-          config
-        });
-
         const reMount = lifeCycles?.update || lifeCycles?.mount;
 
         console.log('reMount', reMount);
 
         if (reMount) {
+          reMountSuccess = true;
+
+          insertTemplateToElement({
+            containerElement,
+            template: lifeCycles.template,
+            appName,
+            activePathFull,
+            microState,
+            config
+          });
+
           reMount({
             name: appName,
             ...customProps
@@ -546,7 +606,7 @@ export const registerMicroApp = (config = {}) => {
     }
   }
 
-  start({ prefetch: true })
+  start({ urlRerouteOnly })
 };
 
 export const registerMicroComponent = (config = {}) => {
