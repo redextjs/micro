@@ -1,12 +1,18 @@
 import {
   registerApplication,
   unregisterApplication,
+  unloadApplication,
   start as startSingleSpa,
   getMountedApps,
   getAppStatus
 } from 'single-spa';
 import loadScript from './loadScript';
 import packageJson from '../package';
+
+const SCRIPT_ID = {
+  PORTAL: 'micro-script:portal',
+  MOVE_STYLE: 'micro-script:move-style'
+}
 
 const noop = () => {
 };
@@ -37,7 +43,25 @@ export const getElementApp = (documentTarget, rootId) => {
   return documentTarget.getElementById ? documentTarget.getElementById(rootId) : documentTarget.querySelector(`[id="${rootId}"]`)
 };
 
-const insertTemplateToElement = ({ containerElement, template, appName, activePathFull, microState, config = {} }) => {
+export const insertScriptNode = ({ elementTarget, code, id }) => {
+  const script = document.createElement('script');
+
+  script.type = 'text/javascript';
+  script.id = id;
+
+  const node = document.createTextNode(code);
+  script.appendChild(node);
+  elementTarget.appendChild(script);
+};
+
+const insertTemplateToElement = ({
+  containerElement,
+  template,
+  appName,
+  activePathFull,
+  microState,
+  config = {}
+}) => {
   const { isShadowRoot, isComponent, isProduction } = config;
 
   containerElement.setAttribute('data-name', `${appName}:container`);
@@ -71,15 +95,11 @@ const insertTemplateToElement = ({ containerElement, template, appName, activePa
   const templateContent = tmpl.content.cloneNode(true);
 
   if (isShadowRoot) {
-    const shadowRoot = containerElement.attachShadow({ mode: 'open' });
+    const shadowRoot = containerElement.shadowRoot || containerElement.attachShadow({ mode: 'open' });
 
     shadowRoot.appendChild(templateContent);
 
-    if (portalId) {
-      const script = document.createElement('script');
-
-      script.type = 'text/javascript';
-
+    if (portalId && !shadowRoot.querySelector(`[id="${SCRIPT_ID.PORTAL}"]`)) {
       const getPortalElement = () => {
         const containerElement = document.querySelector(`[data-name="${appName}:container"]`);
 
@@ -87,10 +107,10 @@ const insertTemplateToElement = ({ containerElement, template, appName, activePa
       }
 
       const observerCallback = (mutationList, observer) => {
-        const mutationRecord = mutationList.find(mutation => mutation.attributeName === 'style');
+        const mutationStyle = mutationList.find(mutation => mutation.attributeName === 'style');
 
-        if (mutationRecord) {
-          const style = mutationRecord.target.style;
+        if (mutationStyle) {
+          const style = mutationStyle.target.style;
 
           document.body.style.overflow = style.overflow;
         }
@@ -105,16 +125,10 @@ const insertTemplateToElement = ({ containerElement, template, appName, activePa
         `observer.observe(element, { attributes: true });`
       ].join('\n');
 
-      script.appendChild(document.createTextNode(code));
-
-      shadowRoot.appendChild(script);
+      insertScriptNode({ elementTarget: shadowRoot, id: SCRIPT_ID.PORTAL, code })
     }
 
-    if (!isProduction) {
-      const script = document.createElement('script');
-
-      script.type = 'text/javascript';
-
+    if (!isProduction && !shadowRoot.querySelector(`[id="${SCRIPT_ID.MOVE_STYLE}"]`)) {
       const moveObserverCallback = () => {
         const containerMoveStyle = document.querySelector(`[data-name="${moveAppName}:container"]`);
 
@@ -137,9 +151,7 @@ const insertTemplateToElement = ({ containerElement, template, appName, activePa
         `moveObserver.observe(document.head, { characterData: true, childList: true, subtree: true });`
       ].join('\n');
 
-      script.appendChild(document.createTextNode(code));
-
-      shadowRoot.appendChild(script);
+      insertScriptNode({ elementTarget: shadowRoot, id: SCRIPT_ID.MOVE_STYLE, code })
     }
 
     containerElement.innerHTML = scriptState;
@@ -147,7 +159,7 @@ const insertTemplateToElement = ({ containerElement, template, appName, activePa
     containerElement.innerHTML = '';
     containerElement.appendChild(templateContent);
   }
-}
+};
 
 // const lifeCyclesProxy = new Proxy({}, {
 //   get: (a, prop) => {
@@ -177,7 +189,7 @@ export const registerMicroApp = (config = {}) => {
     staticPath,
     splashConfig = {},
     rootConfigScriptId = 'micro-root-config',
-    isUnRegister,
+    isKeepAlive = true,
     isAlive,
     isCustomElements,
     isShadowRoot,
@@ -200,8 +212,8 @@ export const registerMicroApp = (config = {}) => {
 
   const appStatus = getAppStatus(appName);
 
-  // console.log('appStatus', appStatus);
-  // console.log('getMountedApps', getMountedApps());
+  console.log('appStatus', appStatus);
+  // console.log('mountedApps', mountedApps);
 
   const hasRegisterApp = !mountedApps.includes(appName) && !appStatus;
 
@@ -255,6 +267,16 @@ export const registerMicroApp = (config = {}) => {
   if (!containerElement) {
     throw 'containerElement not exist'
   }
+
+  if (!containerElement.style.position) {
+    containerElement.style.position = 'relative';
+  }
+
+  if (!containerElement.style.minHeight) {
+    containerElement.style.minHeight = '30vh';
+  }
+
+  // console.log('hasRegisterApp', hasRegisterApp);
 
   if (hasRegisterApp) {
     registerApplication({
@@ -435,19 +457,38 @@ export const registerMicroApp = (config = {}) => {
         }
 
         const newLifeCycles = {
-          ...lifeCycles
-        }
-
-        if (isUnRegister) {
-          newLifeCycles.unmount = [
+          ...lifeCycles,
+          unmount: [
             async () => {
-              await unregisterApplication(appName);
+              console.log('before unmount');
 
-              containerElement.remove();
+              if (!isKeepAlive) {
+                await unregisterApplication(appName);
+              } else {
+                // unloadApplication(appName, { waitForUnmount: true }).then(data => {
+                //   console.log('data', data)
+                // });
+              }
+
+              // if (containerElement.shadowRoot) {
+              //   const shadowRoot = containerElement.shadowRoot;
+              //
+              //   const scripts = shadowRoot.querySelectorAll('script[id*="micro-script"]');
+              //
+              //   for (let i = 0; i < scripts.length; ++i) {
+              //     const script = scripts[i];
+              //
+              //     script.parentNode.removeChild(script);
+              //   }
+              // }
+              //
+              // containerElement.remove();
             },
             lifeCycles?.unmount
           ]
         }
+
+        console.log('lifeCyclesProxy first')
 
         lifeCyclesProxy[appName] = {
           ...lifeCyclesProxy[appName],
@@ -477,8 +518,10 @@ export const registerMicroApp = (config = {}) => {
     if (hasReMount) {
       const lifeCycles = lifeCyclesProxy[appName];
 
+      console.log('lifeCyclesProxy', lifeCyclesProxy)
+
       if (lifeCycles) {
-        // console.log('lifeCycles', appName, lifeCycles);
+        console.log('lifeCycles', appName, lifeCycles);
 
         insertTemplateToElement({
           containerElement,
@@ -491,10 +534,14 @@ export const registerMicroApp = (config = {}) => {
 
         const reMount = lifeCycles?.update || lifeCycles?.mount;
 
-        reMount({
-          name: appName,
-          ...customProps
-        })
+        console.log('reMount', reMount);
+
+        if (reMount) {
+          reMount({
+            name: appName,
+            ...customProps
+          })
+        }
       }
     }
   }
