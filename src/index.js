@@ -1,7 +1,6 @@
 import {
   registerApplication,
   unregisterApplication,
-  unloadApplication,
   start as startSingleSpa,
   getMountedApps,
   getAppStatus
@@ -49,12 +48,25 @@ export const insertScriptNode = ({ elementTarget, code, id }) => {
   script.type = 'text/javascript';
   script.id = id;
 
-  const node = document.createTextNode(code);
+  const node = document.createTextNode(`(function() {\n${code}\n})();`);
   script.appendChild(node);
   elementTarget.appendChild(script);
 };
 
+export const insertCssToElement = (containerElement) => {
+  if (containerElement) {
+    if (!containerElement?.style?.position) {
+      containerElement.style.position = 'relative';
+    }
+
+    if (!containerElement?.style?.minHeight) {
+      containerElement.style.minHeight = '30vh';
+    }
+  }
+}
+
 const insertTemplateToElement = ({
+  container,
   containerElement,
   template,
   appName,
@@ -62,15 +74,13 @@ const insertTemplateToElement = ({
   microState,
   config = {}
 }) => {
-  const { isShadowRoot, isComponent, isProduction } = config;
+  const { isShadowRoot = true, isComponent, isProduction } = config;
 
-  // console.log('containerElement', containerElement)
+  insertCssToElement(containerElement);
 
   containerElement.setAttribute('data-name', `${appName}:container`);
   containerElement.setAttribute('data-version', packageJson.version);
   containerElement.setAttribute('data-active-path', activePathFull);
-
-  // console.log('containerElement', containerElement);
 
   let scriptState;
 
@@ -96,12 +106,10 @@ const insertTemplateToElement = ({
 
   const templateContent = tmpl.content.cloneNode(true);
 
-  console.log('templateContent', template, templateContent)
-
   if (isShadowRoot) {
     const shadowRoot = containerElement.shadowRoot || containerElement.attachShadow({ mode: 'open' });
 
-    removeAllChildNodes(shadowRoot);
+    // removeAllChildNodes(shadowRoot);
 
     shadowRoot.appendChild(templateContent);
 
@@ -136,9 +144,9 @@ const insertTemplateToElement = ({
 
     if (!isProduction && !shadowRoot.querySelector(`[id="${SCRIPT_ID.MOVE_STYLE}"]`)) {
       const moveObserverCallback = () => {
-        const containerMoveStyle = document.querySelector(`[data-name="${moveAppName}:container"]`);
+        const containerMoveStyle = document.querySelector(`[data-name="${appName}:container"]`);
 
-        const tagIdComment = `/* ${moveAppName} */`;
+        const tagIdComment = `/* ${appName} */`;
 
         const moveStyles = Array.from(document.head.children)
           .filter(x => x instanceof HTMLStyleElement)
@@ -152,7 +160,7 @@ const insertTemplateToElement = ({
       }
 
       const code = [
-        `const moveAppName = ${JSON.stringify(appName)};`,
+        `const appName = ${JSON.stringify(appName)};`,
         `const moveObserver = new MutationObserver(${moveObserverCallback.toString()});`,
         `moveObserver.observe(document.head, { characterData: true, childList: true, subtree: true });`
       ].join('\n');
@@ -162,14 +170,65 @@ const insertTemplateToElement = ({
 
     containerElement.innerHTML = scriptState;
 
-    console.log('containerElement', containerElement)
+    // console.log('containerElement', containerElement)
   } else {
     containerElement.innerHTML = '';
     containerElement.appendChild(templateContent);
   }
-
-  console.log('insertTemplateToElement')
 };
+
+const createSplashApp = ({ isSplash, splashElement, splashConfig, isDebugSplash, containerElement }) => {
+  if (!isSplash) {
+    return
+  }
+
+  if (!splashElement) {
+    const { splashStyle = {}, logoUrl, logoStyle = {} } = splashConfig;
+
+    splashElement = document.createElement('div');
+
+    splashElement.style.position = 'absolute';
+    splashElement.style.width = '100%';
+    splashElement.style.height = '100%';
+    splashElement.style.zIndex = '9999';
+    splashElement.style.display = 'flex';
+    splashElement.style.alignItems = 'center';
+    splashElement.style.justifyContent = 'center';
+
+    Object.keys(splashStyle).forEach((key) => {
+      splashElement.style[key] = splashStyle[key];
+    });
+
+    splashElement.id = splashConfig?.id || 'redext-micro-splash';
+
+    if (logoUrl) {
+      const logoElement = document.createElement('img');
+
+      logoElement.src = logoUrl;
+      logoElement.alt = 'logo-splash';
+
+      Object.keys(logoStyle).forEach((key) => {
+        logoElement.style[key] = logoStyle[key];
+      });
+
+      if (!logoStyle.height) {
+        logoElement.style.height = '64px';
+      }
+
+      splashElement.appendChild(logoElement);
+    } else {
+      splashElement.innerHTML = 'Loading';
+    }
+  }
+
+  containerElement.append(splashElement);
+
+  if (isDebugSplash) {
+    throw 'Debug splash'
+  }
+
+  return splashElement;
+}
 
 // const lifeCyclesProxy = new Proxy({}, {
 //   get: (a, prop) => {
@@ -180,9 +239,7 @@ const insertTemplateToElement = ({
 //   }
 // });
 
-window.lifeCyclesProxy = {};
-
-let reMountSuccess = false;
+const lifeCyclesProxy = {};
 
 export const registerMicroApp = (config = {}) => {
   const {
@@ -201,15 +258,21 @@ export const registerMicroApp = (config = {}) => {
     staticPath,
     splashConfig = {},
     rootConfigScriptId = 'micro-root-config',
-    isKeepAlive = true,
+    isKeepAlive = false,
     isAlive,
     isCustomElements,
-    isShadowRoot,
+    isShadowRoot = true,
     fetch = window.fetch,
     plugins = [],
-    urlRerouteOnly = true,
+    urlRerouteOnly = false,
+    isLogTime,
     ...appConfig
   } = config;
+
+  // let dumpStartTime;
+  // if (isLogTime) {
+  //   dumpStartTime = Date.now()
+  // }
 
   let {
     orgName = '@redext-micro',
@@ -225,7 +288,9 @@ export const registerMicroApp = (config = {}) => {
 
   const appStatus = getAppStatus(appName);
 
-  console.log('appStatus', appStatus);
+  const rootId = getRootId(appName);
+
+  // console.log('appStatus', appStatus);
   // console.log('mountedApps', mountedApps);
 
   const hasRegisterApp = !mountedApps.includes(appName) && !appStatus;
@@ -275,7 +340,11 @@ export const registerMicroApp = (config = {}) => {
     customProps.microWorker = microWorker
   }
 
-  console.log('hasRegisterApp', hasRegisterApp);
+  // console.log('hasRegisterApp', hasRegisterApp);
+
+  const containerElement = getContainerElement(container);
+
+  insertCssToElement(containerElement);
 
   if (hasRegisterApp) {
     registerApplication({
@@ -283,29 +352,39 @@ export const registerMicroApp = (config = {}) => {
       activeWhen,
       customProps,
       app: async () => {
-        console.log('reMountSuccess', reMountSuccess)
+        let lifeCycles = lifeCyclesProxy[appName];
 
-        if (reMountSuccess) {
-          return
+        if (lifeCycles) {
+          // console.log('lifeCycles proxy');
+
+          insertTemplateToElement({
+            containerElement,
+            container,
+            template: lifeCycles.template,
+            appName,
+            activePathFull,
+            microState,
+            config
+          });
+
+          return {
+            bootstrap: lifeCycles.bootstrap,
+            mount: lifeCycles.mount,
+            // mount: async (preProps) => {
+            //   console.log('preProps', preProps);
+            //   console.log('customProps', customProps);
+            //
+            //   return lifeCycles.mount({
+            //     ...preProps,
+            //     ...customProps
+            //   })
+            // },
+            unmount: lifeCycles.unmount,
+            update: lifeCycles.update
+          }
         }
 
-        const containerElement = getContainerElement(container);
-
-        console.log('containerElement', container, containerElement)
-
-        if (!containerElement) {
-          throw 'containerElement not exist'
-        }
-
-        if (!containerElement.style.position) {
-          containerElement.style.position = 'relative';
-        }
-
-        if (!containerElement.style.minHeight) {
-          containerElement.style.minHeight = '30vh';
-        }
-
-        let { entry, loadScriptPath, splashElement } = appConfig;
+        let { entry, loadScriptPath } = appConfig;
 
         if (entry.endsWith('/')) {
           const lastIndex = entry.lastIndexOf('/');
@@ -323,56 +402,15 @@ export const registerMicroApp = (config = {}) => {
         lifeCyclesProxy[appName] = {};
 
         if (isComponent) {
-          const rootId = getRootId(appName);
-
-          template = `<div id="${rootId}">Loading</div>`
+          template = `<div id="${rootId}">Loading</div>`;
         } else {
-          if (isSplash) {
-            if (!splashElement) {
-              const { splashStyle = {}, logoUrl, logoStyle = {} } = splashConfig;
-
-              splashElement = document.createElement('div');
-
-              splashElement.style.position = 'absolute';
-              splashElement.style.width = '100%';
-              splashElement.style.height = '100%';
-              splashElement.style.zIndex = '9999';
-              splashElement.style.display = 'flex';
-              splashElement.style.alignItems = 'center';
-              splashElement.style.justifyContent = 'center';
-
-              Object.keys(splashStyle).forEach((key) => {
-                splashElement.style[key] = splashStyle[key];
-              });
-
-              splashElement.id = splashConfig?.id || 'redext-micro-splash';
-
-              if (logoUrl) {
-                const logoElement = document.createElement('img');
-
-                logoElement.src = logoUrl;
-                logoElement.alt = 'logo-splash';
-
-                Object.keys(logoStyle).forEach((key) => {
-                  logoElement.style[key] = logoStyle[key];
-                });
-
-                if (!logoStyle.height) {
-                  logoElement.style.height = '64px';
-                }
-
-                splashElement.appendChild(logoElement);
-              } else {
-                splashElement.innerHTML = 'Loading';
-              }
-            }
-
-            containerElement.append(splashElement);
-
-            if (isDebugSplash) {
-              throw 'Debug splash'
-            }
-          }
+          const splashElement = createSplashApp({
+            isDebugSplash,
+            isSplash,
+            splashElement: appConfig.splashElement,
+            splashConfig,
+            containerElement
+          })
 
           const response = await fetch(entry);
 
@@ -414,8 +452,7 @@ export const registerMicroApp = (config = {}) => {
             }
           }
 
-          if (isSplash) {
-            const rootId = getRootId(appName);
+          if (splashElement) {
             const rootElement = doc.querySelector(`div[id="${rootId}"]`);
             rootElement.innerHTML = splashElement.outerHTML;
 
@@ -429,13 +466,15 @@ export const registerMicroApp = (config = {}) => {
 
         lifeCyclesProxy[appName].template = template;
 
-        insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
-
-        console.log('before mount', getContainerElement(container));
-        console.log('containerElement mount', containerElement, document.querySelector(container))
-        console.log('template mount', template);
-
-        let lifeCycles;
+        insertTemplateToElement({
+          containerElement,
+          container,
+          template,
+          appName,
+          activePathFull,
+          microState,
+          config
+        });
 
         if (loadScriptPath && !loadScriptUrl) {
           if (typeof loadScriptPath === 'string' && !loadScriptPath.startsWith('/')) {
@@ -458,14 +497,10 @@ export const registerMicroApp = (config = {}) => {
             sdkGlobal: appName
           });
 
-          console.log('lifeCycles', lifeCycles)
+          // console.log('lifeCycles', lifeCycles)
         }
 
-        // console.log('lifeCycles', lifeCycles);
-
         if (typeof lifeCycles === 'function') {
-          const rootId = getRootId(appName)
-
           lifeCycles = lifeCycles({
             ...customProps,
             componentProps,
@@ -483,34 +518,19 @@ export const registerMicroApp = (config = {}) => {
           throw 'Debug MicroApp'
         }
 
-        console.log('loadApp')
-
         const newLifeCycles = {
           ...lifeCycles,
           mount: [
-            // async () => {
-            //   console.log('before mount', getContainerElement(container));
-            //   console.log('containerElement mount', containerElement, document.querySelector(container))
-            //   console.log('template mount', template)
-            //
-            //   insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
-            // },
             async (props) => {
-              console.log('mount', props);
-              console.log('container', containerElement, document.querySelector(container));
-              console.log('state', document.querySelector(`#__REDEXT_MICRO_STATE__[data-name="${appName}:state"]`));
-
-              return await lifeCycles?.mount(props)
-            }
+              // console.log('before mount', props);
+            },
+            lifeCycles?.mount
           ],
           unmount: [
             async () => {
-              console.log('before unmount');
-
+              // console.log('before unmount');
               if (!isKeepAlive) {
                 await unregisterApplication(appName);
-              } else {
-                await unloadApplication(appName)
               }
 
               // if (containerElement.shadowRoot) {
@@ -531,7 +551,17 @@ export const registerMicroApp = (config = {}) => {
           ]
         }
 
-        console.log('lifeCyclesProxy first')
+        if (lifeCycles?.update) {
+          newLifeCycles.update = [
+            async (props) => {
+              // console.log('before update', props);
+              const containerElement = getContainerElement(container);
+
+              insertTemplateToElement({ containerElement, template, appName, activePathFull, microState, config });
+            },
+            lifeCycles?.update
+          ]
+        }
 
         lifeCyclesProxy[appName] = {
           ...lifeCyclesProxy[appName],
@@ -542,23 +572,7 @@ export const registerMicroApp = (config = {}) => {
       }
     });
   } else {
-    console.log('reMount')
-    const containerElement = getContainerElement(container);
-
-    if (!containerElement) {
-      throw 'containerElement not exist'
-    }
-
-    if (!containerElement.style.position) {
-      containerElement.style.position = 'relative';
-    }
-
-    if (!containerElement.style.minHeight) {
-      containerElement.style.minHeight = '30vh';
-    }
-
-    const rootId = getRootId(appName);
-
+    // console.log('reMount');
     let rootElement;
 
     if (isShadowRoot) {
@@ -574,35 +588,9 @@ export const registerMicroApp = (config = {}) => {
     const hasReMount = !(rootElement && rootElement.hasChildNodes());
 
     if (hasReMount) {
-      const lifeCycles = lifeCyclesProxy[appName];
-
-      console.log('lifeCyclesProxy', lifeCyclesProxy)
-
-      if (lifeCycles) {
-        console.log('lifeCycles', appName, lifeCycles);
-
-        const reMount = lifeCycles?.update || lifeCycles?.mount;
-
-        console.log('reMount', reMount);
-
-        if (reMount) {
-          reMountSuccess = true;
-
-          insertTemplateToElement({
-            containerElement,
-            template: lifeCycles.template,
-            appName,
-            activePathFull,
-            microState,
-            config
-          });
-
-          reMount({
-            name: appName,
-            ...customProps
-          })
-        }
-      }
+      unregisterApplication(appName).then(() => {
+        registerMicroApp(config)
+      });
     }
   }
 

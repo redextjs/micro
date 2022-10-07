@@ -29,6 +29,9 @@ module.exports = ({ mode }) => {
         keepNames: true
       }
     },
+    esbuild: {
+      pure: ['console.log']
+    },
     define: {
       'process.env': process.env
     }
