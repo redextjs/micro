@@ -114,12 +114,6 @@ const insertTemplateToElement = ({
     shadowRoot.appendChild(templateContent);
 
     if (portalId && !shadowRoot.querySelector(`[id="${SCRIPT_ID.PORTAL}"]`)) {
-      const getPortalElement = () => {
-        const containerElement = document.querySelector(`[data-name="${appName}:container"]`);
-
-        return containerElement.shadowRoot.querySelector(`[id="${portalId}"]`);
-      }
-
       const observerCallback = (mutationList, observer) => {
         const mutationStyle = mutationList.find(mutation => mutation.attributeName === 'style');
 
@@ -131,10 +125,8 @@ const insertTemplateToElement = ({
       }
 
       const code = [
-        `const appName = ${JSON.stringify(appName)};`,
-        `const portalId = ${JSON.stringify(portalId)};`,
         `const observer = new MutationObserver(${observerCallback.toString()});`,
-        `const getPortalElement = ${getPortalElement.toString()};`,
+        `const getPortalElement = () => { \n const containerElement = document.querySelector('[data-name="${appName}:container"]'); \n return containerElement.shadowRoot.querySelector('[id="${portalId}"]'); \n };`,
         `const element = getPortalElement();`,
         `observer.observe(element, { attributes: true });`
       ].join('\n');
