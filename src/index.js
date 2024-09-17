@@ -325,7 +325,8 @@ export const registerMicroApp = (config = {}) => {
 
   const customProps = {
     ...props,
-    ...microState
+    ...microState,
+    splashConfig
   };
 
   if (microWorker) {
@@ -419,7 +420,7 @@ export const registerMicroApp = (config = {}) => {
 
           if (rootConfigScript) {
             const scriptSrc = rootConfigScript.getAttribute('src');
-            const regexUrl = /^((http|https):\/\/)([A-z0-9]+)/;
+            const regexUrl = /^((https?):\/\/)([A-z0-9]+)/;
 
             if (scriptSrc && regexUrl.test(scriptSrc)) {
               loadScriptUrl = rootConfigScript.src;

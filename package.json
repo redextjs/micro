@@ -1,6 +1,6 @@
 {
   "name": "@redext/micro",
-  "version": "0.0.1-staging-210",
+  "version": "0.0.1-staging-212",
   "main": "dist/index.js",
   "publishConfig": {
     "access": "public"
@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "load-script": "^2.0.0",
-    "single-spa": "^5.9.4"
+    "single-spa": "^6.0.1"
   },
   "devDependencies": {
-    "vite": "^2.9.13"
+    "vite": "^5.2.8"
   }
 }
